@@ -17,3 +17,7 @@ void loop() {
   Serial.println(String(tem)+" "+String(hum));
   delay(100);
 }
+
+void printTemHum(){
+  
+}
