@@ -135,7 +135,7 @@ void setup() {
 
   // relay
   pinMode(RELAY_SIGNAL_PIN, OUTPUT);
-  digitalWrite(RELAY_SIGNAL_PIN, HIGH);
+  digitalWrite(RELAY_SIGNAL_PIN, LOW);
 
   // ir remote
   pinMode(IR_PIN, INPUT);
@@ -168,10 +168,12 @@ void loop() {
 
 void turn_on_off() {
   Serial.print("on_off");
-
+  
   static unsigned long last_interrupt_time = 0;
   unsigned long interrupt_time = millis();
+  
   if(interrupt_time - last_interrupt_time > 200){
+    Serial.println("interupt");
       if(state == 0){
         state = 1;
       }else {
@@ -179,15 +181,14 @@ void turn_on_off() {
       }
   }
   last_interrupt_time = interrupt_time;
-  display.clearDisplay();
 }
 
 void check_fan(int state){
  
   if(state==0){
-    digitalWrite(RELAY_SIGNAL_PIN, HIGH);
+    digitalWrite(RELAY_SIGNAL_PIN, LOW );
   } else{
-    digitalWrite(RELAY_SIGNAL_PIN, LOW);
+    digitalWrite(RELAY_SIGNAL_PIN, HIGH);
   }
 }
 void print_oled() {
@@ -196,7 +197,8 @@ void print_oled() {
   display.setCursor(0, 0);
   float tem = dht.readTemperature();
   float hum = dht.readHumidity();
-  display.println("Fan: On");
+  if(state == 0) display.println("Fan: Off");
+  else display.println("Fan: On");
   display.println("Tem:"+String(tem));
   display.println("Hum:"+String(hum));
   display.display();
@@ -261,6 +263,9 @@ void auto_swing() {
   for (pos; pos <= 100; pos++) { // sweep from 0 degrees to 180 degrees
     // in steps of 1 degree
 //    Serial.println(digitalRead(15));
+
+    display.clearDisplay();
+    print_oled();
     if(direction == 2)break;
     ir_remote();
     if(state != 1)break;
@@ -271,6 +276,8 @@ void auto_swing() {
   direction = 2;
   for (pos ; pos >= 0; pos--) { // sweep from 0 degrees to 180 degrees
 //    Serial.println(digitalRead(15));
+    display.clearDisplay();
+    print_oled();
     if(direction == 1)break;
     ir_remote();
     if(state != 1)break;
