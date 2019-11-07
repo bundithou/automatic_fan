@@ -1,8 +1,34 @@
+/**
+
+Project embeded system: automatic fan
+049 bundit hou
+199 tanakitti sachati
+
+*/
+
+////////////// Pin Configuration //////////////////////////////////
+//      VARIABLE                     PIN
+#define DHT_PIN                       19     // DHT
+#define OLED_MOSI                     23     // OLED
+#define OLED_CLK                      18
+#define OLED_DC                       21
+#define OLED_CS                        1
+#define OLED_RESET                     4
+#define RELAY_SIGNAL_PIN               2     // RELAY for FAN
+#define SWITCH_PIN                    15     // SWITCH for INTERUPT
+#define SERVO_PIN                     05      // SERVO
+#define IR_PIN                        22     // IR REMOTE
+
+////////////////////////////////////////////////////////////////////
+int state = 0; // machine state
+int fan_state = 0; // fan state
+
+//////// DHT   /////////////////////////////////////////////
 #include "DHT.h"
-#define DHT_PIN 19     // what digital pin we're connected to
 #define DHT_TYPE DHT11   // DHT 11
 DHT dht(DHT_PIN, DHT_TYPE);
 
+//////// OLED ///////////////////////////////////////////
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -12,14 +38,9 @@ DHT dht(DHT_PIN, DHT_TYPE);
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
 // Declaration for SSD1306 display connected using software SPI (default case):
-#define OLED_MOSI   23
-#define OLED_CLK   18
-#define OLED_DC    21
-#define OLED_CS    1
-#define OLED_RESET 4
+
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT,
   OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS);
-
 #define NUMFLAKES 10
 #define XPOS 0
 #define YPOS 1
@@ -95,25 +116,19 @@ const unsigned char myBitmap [] PROGMEM = {
   0x3f, 0xff, 0xfc, 0x00, 0x00, 0x08, 0x00, 0x00, 0x8f, 0x00, 0x03, 0x01, 0xfb, 0xff, 0xff, 0xff, 
   0x1f, 0xff, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86, 0x00, 0x07, 0x83, 0xff, 0xff, 0xff, 0xff
 };
-///////////////////////////////////
-#define RELAY_SIGNAL_PIN 2
-#define SWITCH_PIN 15
 
-///////////////////////////////////
-int state = 0;
-
-///////////////////////////////////
+/////////// SERVO ///////////////////////////////////////////////////
 #include <ESP32Servo.h>
-#define SERVO_PIN 05
 Servo sv;  // create servo object to control a servo
 int pos = 0;      // position in degrees
 int direction = 1;
-//////////////////////////////////
+
+
+////////////IR REMOTE /////////////////////////////////////////////
 #include <IRremoteESP8266.h>
 #include <IRrecv.h>
 #include <IRutils.h>
 
-#define IR_PIN 22
 int max_pos = 100;
 int min_pos = 0;
 
@@ -121,14 +136,19 @@ int min_pos = 0;
 #define ON_0 0x00FF6897
 #define ON_1 0x00FF30CF
 #define ON_2 0x00FF18E7
+#define ON_3 0x00FF7A85
 #define ON_LEFT 0x00FF22DD
 #define ON_RIGHT 0x00FF02FD
 
 IRrecv ir_recv (IR_PIN);
 decode_results results;
 
+
+
 void setup() {
-  Serial.begin(9600);
+  
+  Serial.begin(115200);
+  
   // switch
   pinMode(SWITCH_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(SWITCH_PIN), turn_on_off, FALLING);
@@ -152,20 +172,55 @@ void setup() {
 }
 
 void loop() { 
-
+  
   display.clearDisplay();
-//  Serial.println(digitalRead(15));
-//  Serial.println(state);
   ir_remote();
-  print_oled();
-  check_fan(state);
+  //print_oled();
+  
+  check_fan(fan_state);
+  
   if(state!=0){
-   if(state==1)auto_swing();
+    // opened state
+     if(state==1){
+      auto_swing();
+      Serial.println("mode 1 auto swing fan");
+      print_oled("mode1");
+     }
+     if(state == 2){
+      Serial.println("mode 2 manual swing fan");
+      print_oled("mode2");
+     }
+     if(state==3){
+      Serial.println("mode 3 auto open fan");
+      
+        float tem = dht.readTemperature();
+        float hum = dht.readHumidity();
+        if(tem > 30 ){
+          fan_state = 1;
+          check_fan(fan_state);
+          auto_swing();
+          Serial.println("mode 3 auto open fan: open");
+        } 
+        else if (tem < 28 ) {
+          
+          fan_state = 0;
+          check_fan(fan_state);
+          Serial.println("mode 3 auto open fan: close");
+        }
+        //check_fan(fan_state);
+        print_oled("mode3");
+     }
+  }
+  else {
+    //closed
+    print_oled("mode idle");
+    Serial.println("stop mode");
   }
   
   
 }
 
+// interupt fuction
 void turn_on_off() {
   Serial.print("on_off");
   
@@ -176,33 +231,42 @@ void turn_on_off() {
     Serial.println("interupt");
       if(state == 0){
         state = 1;
+        fan_state = 1;
       }else {
         state = 0;
+        fan_state = 0;
       }
   }
   last_interrupt_time = interrupt_time;
 }
 
-void check_fan(int state){
+void check_fan(int fan_state){
  
-  if(state==0){
+  if(fan_state==0){
     digitalWrite(RELAY_SIGNAL_PIN, LOW );
   } else{
     digitalWrite(RELAY_SIGNAL_PIN, HIGH);
   }
 }
-void print_oled() {
+void print_oled(String text_mode) {
   display.setTextSize(2);
   display.setTextColor(WHITE);
   display.setCursor(0, 0);
   float tem = dht.readTemperature();
   float hum = dht.readHumidity();
-  if(state == 0) display.println("Fan: Off");
+  if(state == 3 && tem < 28){
+    fan_state = 0;
+    Serial.println("mode 3 auto open fan: close");
+    check_fan(fan_state);
+  }
+  
+  if(fan_state == 0) display.println("Fan: Off");
   else display.println("Fan: On");
   display.println("Tem:"+String(tem));
   display.println("Hum:"+String(hum));
+  display.println(text_mode);
   display.display();
-  
+
 }
 
 void show_meme(){
@@ -232,14 +296,21 @@ void ir_remote(){
       case ON_0:
         Serial.println("Zero");
         state = 0;
+        fan_state = 0;
         break;
       case ON_1:
         Serial.println("One");
         state = 1;
+        fan_state = 1;
         break;
       case ON_2:
         Serial.println("Two");
         state = 2;
+        fan_state = 1;
+        break;
+      case ON_3:
+        Serial.println("Three");
+        state = 3;
         break;
       case ON_LEFT:
         Serial.println("left");
@@ -262,33 +333,35 @@ void auto_swing() {
     sv.attach(SERVO_PIN);
   for (pos; pos <= 100; pos++) { // sweep from 0 degrees to 180 degrees
     // in steps of 1 degree
-//    Serial.println(digitalRead(15));
 
     display.clearDisplay();
-    print_oled();
+    
+    if(state == 1)print_oled("mode1");
+    if(state == 3)print_oled("mode3");
     if(direction == 2)break;
     ir_remote();
-    if(state != 1)break;
+    if(state == 2 ||state == 0 )break;
+    
     
     sv.write(pos);
     delay(50);             // waits 20ms for the servo to reach the position
   }
   direction = 2;
   for (pos ; pos >= 0; pos--) { // sweep from 0 degrees to 180 degrees
-//    Serial.println(digitalRead(15));
     display.clearDisplay();
-    print_oled();
+    if(state == 1)print_oled("mode1");
+    if(state == 3)print_oled("mode3");
     if(direction == 1)break;
     ir_remote();
-    if(state != 1)break;
-    // in steps of 1 degree
+    if(state == 2 ||state == 0)break;
+    //if(state != 3)break;
     
     sv.write(pos);
     delay(50);             // waits 20ms for the servo to reach the position
   }
   direction = 1;
   sv.detach();
-  delay(500);
+  delay(50);
 }
 
 void manual_swing(int direction) {
